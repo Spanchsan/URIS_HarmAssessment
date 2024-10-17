@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
-from torchpack.runner.hooks import PaviLogger
+
 
 
 class IO():
@@ -26,18 +26,6 @@ class IO():
         self.pavi_logger = None
         self.session_file = None
         self.model_text = ''
-
-    def log(self, *args, **kwargs):
-        try:
-            if self.pavi_logger is None:
-                url = 'http://pavi.parrotsdnn.org/log'
-                with open(self.session_file, 'r') as f:
-                    info = dict(session_file=self.session_file, session_text=f.read(), model_text=self.model_text)
-                self.pavi_logger = PaviLogger(url)
-                self.pavi_logger.connect(self.work_dir, info=info)
-            self.pavi_logger.log(*args, **kwargs)
-        except:  #pylint: disable=W0702
-            pass
 
     def load_model(self, model, **model_args):
         Model = import_class(model)

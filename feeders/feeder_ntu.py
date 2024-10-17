@@ -1,8 +1,7 @@
 import numpy as np
 
 from torch.utils.data import Dataset
-
-from feeders import tools
+import Hyperformer.feeders.tools as tools
 
 
 class Feeder(Dataset):
@@ -44,6 +43,24 @@ class Feeder(Dataset):
         if normalization:
             self.get_mean_map()
 
+    """
+    For each frame of a skeleton sequence, an actor's 3D positions of 25 joints represented
+    by an 2D array (shape: 25 x 3) is reshaped into a 75-dim vector by concatenating each
+    3-dim (x, y, z) coordinates along the row dimension in joint order. Each frame contains
+    two actor's joints positions constituting a 150-dim vector. If there is only one actor,
+    then the last 75 values are filled with zeros. Otherwise, select the main actor and the
+    second actor based on the motion amount. Each 150-dim vector as a row vector is put into
+    a 2D numpy array where the number of rows equals the number of valid frames.
+
+    N: Number of video sequences (the first dimension).
+    C: Number of channels (which corresponds to the 3D coordinates: x, y, z). In your case, this is 3.
+    V: Number of skeleton points (which corresponds to the 25 skeleton points per person).
+    T: Number of frames (the second dimension).
+    M: Number of persons (which is 2 in your case).
+    """
+
+
+
     def load_data(self):
         # data: N C V T M
         npz_data = np.load(self.data_path)
@@ -57,7 +74,28 @@ class Feeder(Dataset):
             self.sample_name = ['test_' + str(i) for i in range(len(self.data))]
         else:
             raise NotImplementedError('data split only supports train/test')
+        # N - Number of video sequences,
+        # T - number of frames
+        # _ - skeleton positions layed in one array of size 150 - 25 skele points * 3d pos * 2 person
         N, T, _ = self.data.shape
+        """
+        after reshape
+        N - number of video sequences
+        T - number of frames
+        2 - number of persons
+        25 - number of skeleton points per person
+        3 - 3d coordinates
+        
+        after transpose
+        So, after transposing, the new shape of self.data will be (N, 3, T, 25, 2), which means:
+        N: Number of video sequences.
+        3: The x, y, z coordinates of the skeleton points.
+        T: Number of frames.
+        25: Number of skeleton points per person.
+        2: Number of persons.
+        """
+
+
         self.data = self.data.reshape((N, T, 2, 25, 3)).transpose(0, 4, 1, 3, 2)
 
     def get_mean_map(self):
@@ -115,11 +153,3 @@ class Feeder(Dataset):
         rank = score.argsort()
         hit_top_k = [l in rank[i, -top_k:] for i, l in enumerate(self.label)]
         return sum(hit_top_k) * 1.0 / len(hit_top_k)
-
-
-def import_class(name):
-    components = name.split('.')
-    mod = __import__(components[0])
-    for comp in components[1:]:
-        mod = getattr(mod, comp)
-    return mod

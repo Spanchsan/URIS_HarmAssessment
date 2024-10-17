@@ -2,7 +2,7 @@ import sys
 import numpy as np
 
 sys.path.extend(['../'])
-from graph import tools
+import Hyperformer.graph.tools as tools
 
 num_node = 25
 self_link = [(i, i) for i in range(num_node)]

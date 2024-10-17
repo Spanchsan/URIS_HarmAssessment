@@ -21,21 +21,6 @@ import torch.optim as optim
 import yaml
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
-from torchlight.util import DictAction
-
-"https://github.com/ajbrock/BigGAN-PyTorch/blob/master/utils.py"
-
-
-def ema_update(source, target, decay=0.99, start_itr=20, itr=None):
-    # If an iteration counter is provided and itr is less than the start itr,
-    # peg the ema weights to the underlying weights.
-    if itr and itr<start_itr:
-        decay = 0.0
-    # source = copy.deepcopy(source)
-    with torch.no_grad():
-        for key, value in source.module.state_dict().items():
-            target.state_dict()[key].copy_(target.state_dict()[key] * decay + value * (1 - decay))
-            # print(key)
 
 
 def init_seed(seed):
@@ -59,181 +44,9 @@ def import_class(import_str):
     except AttributeError:
         raise ImportError('Class %s cannot be found (%s)' % (class_str, traceback.format_exception(*sys.exc_info())))
 
-def str2bool(v):
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Unsupported value encountered.')
-
-
-def get_parser():
-
-
-    # parameter priority: command line > config > default
-    parser = argparse.ArgumentParser(
-        description='GRA Transformer')
-
-    parser.add_argument(
-        '--work-dir',
-        default='./work_dir/temp',
-        help='the work folder for storing results')
-
-    parser.add_argument('-model_saved_name', default='')
-    parser.add_argument(
-        '--config',
-        default='./config/nturgbd-cross-view/test_bone.yaml',
-        help='path to the configuration file')
-
-    # processor
-    parser.add_argument(
-        '--phase', default='train', help='must be train or test')
-    parser.add_argument(
-        '--save-score',
-        type=str2bool,
-        default=False,
-        help='if ture, the classification score will be stored')
-
-    # gra
-    parser.add_argument(
-        '--joint-label',
-        type=list,
-        default=[],
-        help='tells which group each joint belongs to')
-
-    # visulize and debug
-    parser.add_argument(
-        '--seed', type=int, default=2, help='random seed for pytorch')
-    parser.add_argument(
-        '--log-interval',
-        type=int,
-        default=100,
-        help='the interval for printing messages (#iteration)')
-    parser.add_argument(
-        '--save-interval',
-        type=int,
-        default=1,
-        help='the interval for storing models (#iteration)')
-    parser.add_argument(
-        '--save-epoch',
-        type=int,
-        default=10,
-        help='the start epoch to save model (#iteration)')
-    parser.add_argument(
-        '--eval-interval',
-        type=int,
-        default=5,
-        help='the interval for evaluating models (#iteration)')
-    parser.add_argument(
-        '--ema',
-        action="store_true",
-        default=False,
-        help='ema weight for eval')
-
-    parser.add_argument('--lambda_1', type=float, default=1e-4)
-    parser.add_argument('--lambda_2', type=float, default=1e-1)
-
-    parser.add_argument(
-        '--print-log',
-        type=str2bool,
-        default=True,
-        help='print logging or not')
-    parser.add_argument(
-        '--show-topk',
-        type=int,
-        default=[1, 5],
-        nargs='+',
-        help='which Top K accuracy will be shown')
-
-    # feeder
-    parser.add_argument(
-        '--feeder', default='feeder.feeder', help='data loader will be used')
-    parser.add_argument(
-        '--num-worker',
-        type=int,
-        default=48,
-        help='the number of worker for data loader')
-    parser.add_argument(
-        '--train-feeder-args',
-        action=DictAction,
-        default=dict(),
-        help='the arguments of data loader for training')
-    parser.add_argument(
-        '--test-feeder-args',
-        action=DictAction,
-        default=dict(),
-        help='the arguments of data loader for test')
-
-    # model
-    parser.add_argument('--model', default=None, help='the model will be used')
-    parser.add_argument(
-        '--model-args',
-        action=DictAction,
-        default=dict(),
-        help='the arguments of model')
-    parser.add_argument(
-        '--weights',
-        default=None,
-        help='the weights for network initialization')
-    parser.add_argument(
-        '--ignore-weights',
-        type=str,
-        default=[],
-        nargs='+',
-        help='the name of weights which will be ignored in the initialization')
-
-    # optim
-    parser.add_argument(
-        '--base-lr', type=float, default=0.025, help='initial learning rate')
-    parser.add_argument(
-        '--step',
-        type=int,
-        default=[110, 120],
-        nargs='+',
-        help='the epoch where optimizer reduce the learning rate')
-    parser.add_argument(
-        '--device',
-        type=int,
-        default=[0,1],
-        nargs='+',
-        help='the indexes of GPUs for training or testing')
-    parser.add_argument('--optimizer', default='SGD', help='type of optimizer')
-    parser.add_argument(
-        '--nesterov', type=str2bool, default=False, help='use nesterov or not')
-    parser.add_argument(
-        '--momentum', type=float, default=0.9, help='nesterov momentum')
-    parser.add_argument(
-        '--batch-size', type=int, default=32, help='training batch size')
-    parser.add_argument(
-        '--test-batch-size', type=int, default=32, help='test batch size')
-    parser.add_argument(
-        '--start-epoch',
-        type=int,
-        default=0,
-        help='start training from which epoch')
-    parser.add_argument(
-        '--num-epoch',
-        type=int,
-        default=80,
-        help='stop training in which epoch')
-    parser.add_argument(
-        '--weight-decay',
-        type=float,
-        default=0.0005,
-        help='weight decay for optimizer')
-    parser.add_argument(
-        '--lr-decay-rate',
-        type=float,
-        default=0.1,
-        help='decay rate for learning rate')
-    parser.add_argument('--warm_up_epoch', type=int, default=0)
-
-    return parser
-
 
 class Processor():
-    """ 
+    """
         Processor for Skeleton-based Action Recgnition
     """
 
@@ -269,8 +82,6 @@ class Processor():
         self.best_acc = 0
         self.best_acc_epoch = 0
 
-        self.best_acc_ema = 0
-        self.best_acc_epoch_ema = 0
 
         self.model = self.model.cuda(self.output_device)
 
@@ -280,10 +91,6 @@ class Processor():
                     self.model,
                     device_ids=self.arg.device,
                     output_device=self.output_device)
-        if self.arg.ema:
-            Model = import_class(self.arg.model)
-            self.model_ema = Model(**self.arg.model_args).cuda(self.output_device)
-            ema_update(self.model, self.model_ema, itr=0)
 
 
     def load_data(self):
@@ -349,14 +156,6 @@ class Processor():
 
     def load_optimizer(self):
         if self.arg.optimizer == 'SGD':
-
-            # my_list = ['fc.weight', 'fc.bias', 'fc_mu.weight', 'fc_mu.bias','fc_logvar.weight', 'fc_logvar.bias', 'decoder.weight', 'decoder.bias']
-            # params = list(filter(lambda kv: kv[0] in my_list, self.model.named_parameters()))
-            # base_params = list(filter(lambda kv: kv[0] not in my_list, self.model.named_parameters()))
-            #
-            # params = [i[1] for i in params]
-            # base_params = [i[1] for i in base_params]
-
             self.optimizer = optim.SGD(
                 self.model.parameters(),
                 lr=self.arg.base_lr,
@@ -432,8 +231,6 @@ class Processor():
 
     def train(self, epoch, save_model=False):
         self.model.train()
-        if self.arg.ema:
-            self.model_ema.train()
         self.print_log('Training epoch: {}'.format(epoch + 1))
         loader = self.data_loader['train']
         self.adjust_learning_rate(epoch)
@@ -530,8 +327,6 @@ class Processor():
         if result_file is not None:
             f_r = open(result_file, 'w')
         self.model.eval()
-        if self.arg.ema:
-            self.model_ema.eval()
         self.print_log('Eval epoch: {}'.format(epoch + 1))
         for ln in loader_name:
             loss_value = []
@@ -539,42 +334,24 @@ class Processor():
             label_list = []
             pred_list = []
 
-            loss_value_ema = []
-            score_frag_ema = []
-            label_list_ema = []
-            pred_list_ema = []
             step = 0
             process = tqdm(self.data_loader[ln], ncols=40)
             for batch_idx, (data, label, index) in enumerate(process):
                 label_list.append(label)
-                if arg.ema:
-                    label_list_ema.append(label)
                 with torch.no_grad():
                     data = data.float().cuda(self.output_device)
                     label = label.long().cuda(self.output_device)
                     output, z = self.model(data, F.one_hot(label, num_classes=60))
                     # output, z = self.model(data, F.one_hot(label, num_classes=self.model.num_class))
-                    if arg.ema:
-                        self.model_ema.cuda(self.output_device)
-                        output_ema, z_ema = self.model_ema(data, F.one_hot(label, num_classes=60))
 
                     loss = self.loss(output, label)
-                    if arg.ema:
-                        loss_ema = self.loss(output_ema, label)
 
                     score_frag.append(output.data.cpu().numpy())
                     loss_value.append(loss.data.item())
 
-                    if arg.ema:
-                        score_frag_ema.append(output_ema.data.cpu().numpy())
-                        loss_value_ema.append(loss_ema.data.item())
 
                     _, predict_label = torch.max(output.data, 1)
                     pred_list.append(predict_label.data.cpu().numpy())
-
-                    if arg.ema:
-                        _, predict_label_ema = torch.max(output_ema.data, 1)
-                        pred_list_ema.append(predict_label_ema.data.cpu().numpy())
 
                     step += 1
 
@@ -590,64 +367,31 @@ class Processor():
             score = np.concatenate(score_frag)
             loss = np.mean(loss_value)
 
-            if self.arg.ema:
-                score_ema = np.concatenate(score_frag_ema)
-                loss_ema = np.mean(loss_value_ema)
-
             if 'ucla' in self.arg.feeder:
                 self.data_loader[ln].dataset.sample_name = np.arange(len(score))
             accuracy = self.data_loader[ln].dataset.top_k(score, 1)
-
-            if self.arg.ema:
-                accuracy_ema = self.data_loader[ln].dataset.top_k(score_ema, 1)
 
             if accuracy > self.best_acc:
                 self.best_acc = accuracy
                 self.best_acc_epoch = epoch + 1
 
-            if self.arg.ema:
-                if accuracy_ema > self.best_acc_ema:
-                    self.best_acc_ema = accuracy_ema
-                    self.best_acc_epoch_ema = epoch + 1
-
             print('Accuracy: ', accuracy, ' model: ', self.arg.model_saved_name)
-            if self.arg.ema:
-                print('Accuracy_ema: ', accuracy, ' model_ema: ', self.arg.model_saved_name)
             if self.arg.phase == 'train':
                 self.val_writer.add_scalar('loss', loss, self.global_step)
                 self.val_writer.add_scalar('acc', accuracy, self.global_step)
-                if arg.ema:
-                    self.val_writer.add_scalar('loss_ema', loss_ema, self.global_step)
-                    self.val_writer.add_scalar('acc_ema', accuracy_ema, self.global_step)
 
             score_dict = dict(
                 zip(self.data_loader[ln].dataset.sample_name, score))
-            if self.arg.ema:
-                score_dict_ema = dict(
-                    zip(self.data_loader[ln].dataset.sample_name, score_ema))
             self.print_log('\tMean {} loss of {} batches: {}.'.format(
                 ln, len(self.data_loader[ln]), np.mean(loss_value)))
-            if self.arg.ema:
-                self.print_log('\tMean {} loss_ema of {} batches: {}.'.format(
-                    ln, len(self.data_loader[ln]), np.mean(loss_value_ema)))
             for k in self.arg.show_topk:
                 self.print_log('\tTop{}: {:.2f}%'.format(
                     k, 100 * self.data_loader[ln].dataset.top_k(score, k)))
-            if arg.ema:
-                for k in self.arg.show_topk:
-                    self.print_log('\tTop{}_ema: {:.2f}%'.format(
-                        k, 100 * self.data_loader[ln].dataset.top_k(score_ema, k)))
 
             if save_score:
                 with open('{}/epoch{}_{}_score.pkl'.format(
                         self.arg.work_dir, epoch + 1, ln), 'wb') as f:
                     pickle.dump(score_dict, f)
-
-            if arg.ema:
-                if save_score:
-                    with open('{}/epoch{}_{}_score_ema.pkl'.format(
-                            self.arg.work_dir, epoch + 1, ln), 'wb') as f:
-                        pickle.dump(score_dict_ema, f)
 
             # acc for each class:
             label_list = np.concatenate(label_list)
@@ -661,18 +405,6 @@ class Processor():
                 writer.writerow(each_acc)
                 writer.writerows(confusion)
 
-            if arg.ema:
-                # acc for each class:
-                label_list_ema = np.concatenate(label_list_ema)
-                pred_list_ema = np.concatenate(pred_list_ema)
-                confusion_ema = confusion_matrix(label_list_ema, pred_list_ema)
-                list_diag_ema = np.diag(confusion_ema)
-                list_raw_sum_ema = np.sum(confusion_ema, axis=1)
-                each_acc_ema = list_diag_ema / list_raw_sum_ema
-                with open('{}/epoch{}_{}_each_class_acc_ema.csv'.format(self.arg.work_dir, epoch + 1, ln), 'w') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(each_acc_ema)
-                    writer.writerows(confusion_ema)
 
     def start(self):
         if self.arg.phase == 'train':
@@ -687,8 +419,6 @@ class Processor():
 
                 # self.lr_scheduler.step(epoch)
                 self.train(epoch, save_model=save_model)
-                if self.arg.ema:
-                    ema_update(self.model, self.model_ema, itr=epoch)
                 self.eval(epoch, save_score=self.arg.save_score, loader_name=['test'])
 
             # test the best model
@@ -720,16 +450,6 @@ class Processor():
         elif self.arg.phase == 'test':
             wf = self.arg.weights.replace('.pt', '_wrong.txt')
             rf = self.arg.weights.replace('.pt', '_right.txt')
-
-            # mask = self.model.module.joint_label
-            #
-            # A = torch.tensor(self.model.module.graph.A).cuda(mask.device).float()
-            # A[A!=0] = 1
-            #
-            # ind = torch.argmax(mask, dim=0)
-            # print(ind)
-
-
             if self.arg.weights is None:
                 raise ValueError('Please appoint --weights.')
             self.arg.print_log = False
@@ -739,18 +459,18 @@ class Processor():
             self.print_log('Done.\n')
 
 if __name__ == '__main__':
-    parser = get_parser()
-
+    #parser = get_parser()
+    parser = argparse.ArgumentParser(
+        description='GRA Transformer')
+    parser.add_argument(
+        '--config',
+        default='./config/custom/bone_vel.yaml',
+        help='path to the configuration file')
     # load arg form config file
     p = parser.parse_args()
     if p.config is not None:
         with open(p.config, 'r') as f:
             default_arg = yaml.load(f)
-        key = vars(p).keys()
-        for k in default_arg.keys():
-            if k not in key:
-                print('WRONG ARG: {}'.format(k))
-                assert (k in key)
         parser.set_defaults(**default_arg)
 
     arg = parser.parse_args()

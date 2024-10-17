@@ -1,0 +1,69 @@
+work_dir: ./work_dir/ntu60/xsub/hyperformer_bone_vel
+phase: train
+save-score: False
+seed: 2
+log-interval: 100
+print_log: True
+show-topk: [1, 5]
+
+# feeder
+feeder: feeders.feeder_ntu.Feeder
+train_feeder_args:
+  data_path: data/ntu/NTU60_CS.npz
+  split: train
+  debug: False
+  random_choose: False
+  random_shift: False
+  random_move: False
+  window_size: 64
+  normalization: False
+  random_rot: True
+  p_interval: [0.5, 1]
+  vel: True
+  bone: True
+
+test_feeder_args:
+  data_path: data/ntu/NTU60_CS.npz
+  split: test
+  window_size: 64
+  p_interval: [0.95]
+  vel: True
+  bone: True
+  debug: False
+
+# model
+model: model.Hyperformer.Model
+weights: null
+model_args:
+  num_class: 60
+  num_point: 25
+  num_person: 2
+  graph: graph.ntu_rgb_d.Graph
+  graph_args:
+    labeling_mode: 'spatial'
+  drop_path: 0
+  joint_label: [0, 4, 2, 2, 2, 2, 1, 1, 2, 2, 1, 1, 2, 3, 3, 3, 2, 3, 3, 3, 1, 0, 1, 0, 1]
+
+#optim
+optimizer: SGD
+weight_decay: 0.0004
+base_lr: 0.025
+lr_decay_rate: 0.1
+#step: [35, 55]
+step: [110, 120]
+
+warm_up_epoch: 5
+start_epoch: 0
+save_interval: 1
+eval_interval: 5
+save_epoch: 10
+
+
+# training
+device: [0]
+batch_size: 32
+test_batch_size: 32
+num_epoch: 80
+num_worker: 0
+nesterov: True
+momentum: 0.9

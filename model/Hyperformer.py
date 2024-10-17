@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+
 ### torch version too old for timm
 ### https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers
 def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: bool = True):
@@ -27,6 +28,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: b
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     """
+
     def __init__(self, drop_prob=None, scale_by_keep=True):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
@@ -34,6 +36,7 @@ class DropPath(nn.Module):
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training, self.scale_by_keep)
+
 
 ### torch version too old for timm
 ### https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers
@@ -94,8 +97,6 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
 
-
-
 def import_class(name):
     components = name.split('.')
     mod = __import__(components[0])
@@ -139,18 +140,22 @@ def weights_init(m):
         if hasattr(m, 'bias') and m.bias is not None:
             m.bias.data.fill_(0)
 
+
 class TemporalConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1):
         super(TemporalConv, self).__init__()
-        pad = (kernel_size + (kernel_size-1) * (dilation-1) - 1) // 2
+        # adjust padding for kernel size so that it will be equal to out_channe;s
+        pad = (kernel_size + (kernel_size - 1) * (dilation - 1) - 1) // 2
         self.conv = nn.Conv2d(
             in_channels,
             out_channels,
+            # kernel_size, 1 so that we look only for spatial
+            # 3 time steps windows of only 1 node
             kernel_size=(kernel_size, 1),
             padding=(pad, 0),
             stride=(stride, 1),
             dilation=(dilation, 1),
-            )
+        )
 
         self.bn = nn.BatchNorm2d(out_channels)
 
@@ -159,13 +164,14 @@ class TemporalConv(nn.Module):
         x = self.bn(x)
         return x
 
+
 class MultiScale_TemporalConv(nn.Module):
     def __init__(self,
                  in_channels,
                  out_channels,
                  kernel_size=3,
                  stride=1,
-                 dilations=[1,2,3,4],
+                 dilations=[1, 2, 3, 4],
                  residual=False,
                  residual_kernel_size=1):
 
@@ -173,12 +179,13 @@ class MultiScale_TemporalConv(nn.Module):
         assert out_channels % (len(dilations) + 2) == 0, '# out channels should be multiples of # branches'
 
         # Multiple branches of temporal convolution
+        # + 2 because we have additional 2 branches for max and 1x1 branch
         self.num_branches = len(dilations) + 2
         branch_channels = out_channels // self.num_branches
         if type(kernel_size) == list:
             assert len(kernel_size) == len(dilations)
         else:
-            kernel_size = [kernel_size]*len(dilations)
+            kernel_size = [kernel_size] * len(dilations)
         # Temporal Convolution branches
         self.branches = nn.ModuleList([
             nn.Sequential(
@@ -198,6 +205,7 @@ class MultiScale_TemporalConv(nn.Module):
                     dilation=dilation
                 ),
             )
+            # checking for each dilation so that we will look for global context
             for ks, dilation in zip(kernel_size, dilations)
         ])
 
@@ -206,12 +214,12 @@ class MultiScale_TemporalConv(nn.Module):
             nn.Conv2d(in_channels, branch_channels, kernel_size=1, padding=0),
             nn.BatchNorm2d(branch_channels),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(3,1), stride=(stride,1), padding=(1,0)),
+            nn.MaxPool2d(kernel_size=(3, 1), stride=(stride, 1), padding=(1, 0)),
             nn.BatchNorm2d(branch_channels)  # 为什么还要加bn
         ))
 
         self.branches.append(nn.Sequential(
-            nn.Conv2d(in_channels, branch_channels, kernel_size=1, padding=0, stride=(stride,1)),
+            nn.Conv2d(in_channels, branch_channels, kernel_size=1, padding=0, stride=(stride, 1)),
             nn.BatchNorm2d(branch_channels)
         ))
 
@@ -226,8 +234,6 @@ class MultiScale_TemporalConv(nn.Module):
         # initialize
         self.apply(weights_init)
 
-
-
     def forward(self, x):
         # Input dim: (N,C,T,V)
         res = self.residual(x)
@@ -239,6 +245,7 @@ class MultiScale_TemporalConv(nn.Module):
         out = torch.cat(branch_outs, dim=1)
         out += res
         return out
+
 
 class unit_tcn(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=5, stride=1):
@@ -256,8 +263,17 @@ class unit_tcn(nn.Module):
         return x
 
 
+"""
+initial state - actual attention module
+
+in_channels - 3 for first layer, then 24*number of heads
+out_channels - 24*number of heads
+"""
+
+
 class MHSA(nn.Module):
-    def __init__(self, dim_in, dim, A, num_heads=6, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., insert_cls_layer=0, pe=False, num_point=25,
+    def __init__(self, dim_in, dim, A, num_heads=6, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 insert_cls_layer=0, pe=False, num_point=25,
                  outer=True, layer=0,
                  **kwargs):
         super().__init__()
@@ -268,37 +284,35 @@ class MHSA(nn.Module):
         self.num_point = num_point
         self.layer = layer
 
-
-
         h1 = A.sum(0)
         h1[h1 != 0] = 1
         h = [None for _ in range(num_point)]
         h[0] = np.eye(num_point)
         h[1] = h1
-        self.hops = 0*h[0]
+        self.hops = 0 * h[0]
         for i in range(2, num_point):
-            h[i] = h[i-1] @ h1.transpose(0, 1)
+            h[i] = h[i - 1] @ h1.transpose(0, 1)
             h[i][h[i] != 0] = 1
 
-        for i in range(num_point-1, 0, -1):
-            if np.any(h[i]-h[i-1]):
+        for i in range(num_point - 1, 0, -1):
+            if np.any(h[i] - h[i - 1]):
                 h[i] = h[i] - h[i - 1]
-                self.hops += i*h[i]
+                self.hops += i * h[i]
             else:
                 continue
 
         self.hops = torch.tensor(self.hops).long()
-        #
-        self.rpe = nn.Parameter(torch.zeros((self.hops.max()+1, dim)))
+        # by adding adjacent graph connections as hypergraph
+        # construct rpe to have Hypergraph influence on whole input
+        self.rpe = nn.Parameter(torch.zeros((self.hops.max() + 1, dim)))
 
         self.w1 = nn.Parameter(torch.zeros(num_heads, head_dim))
-
-
 
         A = A.sum(0)
         A[:, :] = 0
 
-        self.outer = nn.Parameter(torch.stack([torch.eye(A.shape[-1]) for _ in range(num_heads)], dim=0), requires_grad=True)
+        self.outer = nn.Parameter(torch.stack([torch.eye(A.shape[-1]) for _ in range(num_heads)], dim=0),
+                                  requires_grad=True)
 
         self.alpha = nn.Parameter(torch.zeros(1), requires_grad=True)
 
@@ -306,7 +320,6 @@ class MHSA(nn.Module):
         self.q = nn.Conv2d(dim_in, dim, 1, bias=qkv_bias)
 
         self.attn_drop = nn.Dropout(attn_drop)
-
 
         self.proj = nn.Conv2d(dim, dim, 1, groups=6)
 
@@ -324,47 +337,99 @@ class MHSA(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x, e):
+        """
+        x
+        N * M - number of video sequences with person number
+        C - number of channels (3d position of points)
+        T - number of frames
+        V - number of skeleton points (25)
+        after permute
+        (N*M, C, T, V)
+        """
         N, C, T, V = x.shape
+        # all of this assuming this is the first layer
+        """kv - convolution nn - 3 in channel as for 3d positions, output 24 * batch_head size after kv(x)
+        basically opening up the whole data in 2 * 24 * batch_head for each person and their joint to joint relation
+        after reshape
+        N - number of videos
+        2 - persons
+        num_heads - number of heads in layer
+        self.dim // self.num_heads = 24 - channels(number of neurons)
+        T - number of frames
+        V - skeleton points
+        after permute
+        (2, N, T, num_heads, V, 24{channels})
+        """
         kv = self.kv(x).reshape(N, 2, self.num_heads, self.dim // self.num_heads, T, V).permute(1, 0, 4, 2, 5, 3)
+        # k - first person relation
+        # v - second person relation
         k, v = kv[0], kv[1]
 
+        """
+        q - convolution nn - to use in k-hop RPE(idk what it is - k-hop relative positional embedding) 
+        q(x) - opening up whole data in 24 * batch_head
+        N - number of videos
+        T - number of frames
+        H=num_heads - number of heads
+        V - skeleton points
+        C=self.dim // self.num_heads - 24 - channels(number of neurons)
+        """
         ## n t h v c
         q = self.q(x).reshape(N, self.num_heads, self.dim // self.num_heads, T, V).permute(0, 3, 1, 4, 2)
 
+        """
+        e - hyperedge representation to each position
+        """
         e_k = e.reshape(N, self.num_heads, self.dim // self.num_heads, T, V).permute(0, 3, 1, 4, 2)
+        #
         #
         #
         pos_emb = self.rpe[self.hops]
         #
+        """
+        RPE - bone connectivity relation
+        """
         k_r = pos_emb.view(V, V, self.num_heads, self.dim // self.num_heads)
         #
+        """
+        b - K-Hop RPE = Q * R_T
+        """
         b = torch.einsum("bthnc, nmhc->bthnm", q, k_r)
         #
+        """
+        Joint to hyperedge
+        """
         c = torch.einsum("bthnc, bthmc->bthnm", q, e_k)
+        """
+        Attentive bias coming fron hyperdge relation
+        """
         d = torch.einsum("hc, bthmc->bthm", self.w1, e_k).unsqueeze(-2)
 
-
+        """
+        Joint-to-joint = Q * K_T
+        """
         a = q @ k.transpose(-2, -1)
-
+        """
+        attention sumation of all values
+        """
         attn = a + b + c + d
 
-
         attn = attn * self.scale
-
+        # softmax
         attn = attn.softmax(dim=-1)
-
+        # attn_drop
         attn = self.attn_drop(attn)
 
-
+        # matmul with V
         x = (self.alpha * attn + self.outer) @ v
         # x = attn @ v
-
 
         x = x.transpose(3, 4).reshape(N, T, -1, V).transpose(1, 2)
         x = self.proj(x)
 
         x = self.proj_drop(x)
         return x
+
 
 # using conv2d implementation after dimension permutation
 class Mlp(nn.Module):
@@ -399,18 +464,30 @@ class Mlp(nn.Module):
         return x
 
 
+"""
+normalize hypersa values, drop unused attention, acquire hyperedge relation
+
+in_channels - 3 for first layer, then 24*number of heads
+out_channels - 24*number of heads
+"""
+
+
 class unit_vit(nn.Module):
-    def __init__(self, dim_in, dim, A, num_of_heads, add_skip_connection=True,  qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
+    def __init__(self, dim_in, dim, A, num_of_heads, add_skip_connection=True, qkv_bias=False, qk_scale=None, drop=0.,
+                 attn_drop=0.,
                  drop_path=0, act_layer=nn.GELU, norm_layer=nn.LayerNorm, layer=0,
-                insert_cls_layer=0, pe=False, num_point=25, **kwargs):
+                 insert_cls_layer=0, pe=False, num_point=25, **kwargs):
         super().__init__()
         self.norm1 = norm_layer(dim_in)
         self.dim_in = dim_in
         self.dim = dim
         self.add_skip_connection = add_skip_connection
         self.num_point = num_point
-        self.attn = MHSA(dim_in, dim, A, num_heads=num_of_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop,
-                             proj_drop=drop, insert_cls_layer=insert_cls_layer, pe=pe, num_point=num_point, layer=layer, **kwargs)
+        # attention part - HyperSA
+        self.attn = MHSA(dim_in, dim, A, num_heads=num_of_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                         attn_drop=attn_drop,
+                         proj_drop=drop, insert_cls_layer=insert_cls_layer, pe=pe, num_point=num_point, layer=layer,
+                         **kwargs)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         if self.dim_in != self.dim:
             self.skip_proj = nn.Conv2d(dim_in, dim, (1, 1), padding=(0, 0), bias=False)
@@ -419,33 +496,65 @@ class unit_vit(nn.Module):
 
     def forward(self, x, joint_label, groups):
         ## more efficient implementation
+        # get all joint labels
         label = F.one_hot(torch.tensor(joint_label)).float().to(x.device)
+        # mat multiply out with existing labels
+        # joint label importance to the size of x
         z = x @ (label / label.sum(dim=0, keepdim=True))
 
         # w/o proj
         # z = z.permute(3, 0, 1, 2)
         # w/ proj
+        # project them to appropriate size - 24 * heads
         z = self.pe_proj(z).permute(3, 0, 1, 2)
 
+        # E - Subset representation of the projection of the invidiual joints features
+        # e_avg - hyper edge representation to each joint
         e = z[joint_label].permute(1, 2, 3, 0)
 
         if self.add_skip_connection:
             if self.dim_in != self.dim:
-                x = self.skip_proj(x) + self.drop_path(self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
+                x = self.skip_proj(x) + self.drop_path(
+                    self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
             else:
                 x = x + self.drop_path(self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
         else:
+            """
+            N * M - number of video sequences with person number
+            C - number of channels (3d position of points)
+            T - number of frames
+            V - number of skeleton points (25)
+            after permute(0,2,3,1)
+            (N*M, T, V, C)
+            after permute(0,3,1,2)
+            (N*M, C, T, V)
+            
+            normalize hypersa values, drop unused attention, acquire hyperedge relation
+            """
             x = self.drop_path(self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
 
         # x = x + self.drop_path(self.mlp(self.norm2(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)))
 
         return x
 
+
+"""
+Attention module + Temporal module 
+
+in_channels - 3 for first layer, then 24*number of heads
+out_channels - 24*number of heads
+"""
+
+
 class TCN_ViT_unit(nn.Module):
-    def __init__(self, in_channels, out_channels, A, stride=1, num_of_heads=6, residual=True, kernel_size=5, dilations=[1,2], pe=False, num_point=25, layer=0):
+    def __init__(self, in_channels, out_channels, A, stride=1, num_of_heads=6, residual=True, kernel_size=5,
+                 dilations=[1, 2], pe=False, num_point=25, layer=0):
         super(TCN_ViT_unit, self).__init__()
-        self.vit1 = unit_vit(in_channels, out_channels, A, add_skip_connection=residual, num_of_heads=num_of_heads, pe=pe, num_point=num_point, layer=layer)
+        # attention and spatial part
+        self.vit1 = unit_vit(in_channels, out_channels, A, add_skip_connection=residual, num_of_heads=num_of_heads,
+                             pe=pe, num_point=num_point, layer=layer)
         # self.tcn1 = unit_tcn(out_channels, out_channels, stride=stride)
+        # temporal part
         self.tcn1 = MultiScale_TemporalConv(out_channels, out_channels, kernel_size=kernel_size, stride=stride,
                                             dilations=dilations,
                                             # redisual=True has worse performance in the end
@@ -469,6 +578,15 @@ class TCN_ViT_unit(nn.Module):
         return y
 
 
+"""
+    N: Number of video sequences (the first dimension).
+    C: Number of channels (which corresponds to the 3D coordinates: x, y, z). In your case, this is 3.
+    V: Number of skeleton points (which corresponds to the 25 skeleton points per person).
+    T: Number of frames (the second dimension).
+    M: Number of persons (which is 2 in your case).
+"""
+
+
 class Model(nn.Module):
     def __init__(self, num_class=60, num_point=20, num_person=2, graph=None, graph_args=dict(), in_channels=3,
                  drop_out=0, num_of_heads=9, joint_label=[], **kwargs):
@@ -489,22 +607,31 @@ class Model(nn.Module):
         self.data_bn = nn.BatchNorm1d(num_person * in_channels * num_point)
         self.joint_label = joint_label
 
-
-        self.l1 = TCN_ViT_unit(3, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=1)
+        self.l1 = TCN_ViT_unit(3, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True,
+                               num_point=num_point, layer=1)
         # * num_heads, effect of concatenation following the official implementation
-        self.l2 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=2)
-        self.l3 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=3)
-        self.l4 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=4)
-        self.l5 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, stride=2, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=5)
-        self.l6 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=6)
-        self.l7 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=7)
+        self.l2 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                               pe=True, num_point=num_point, layer=2)
+        self.l3 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                               pe=True, num_point=num_point, layer=3)
+        self.l4 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                               pe=True, num_point=num_point, layer=4)
+        self.l5 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, stride=2,
+                               num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=5)
+        self.l6 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                               pe=True, num_point=num_point, layer=6)
+        self.l7 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                               pe=True, num_point=num_point, layer=7)
         # self.l8 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, num_of_heads=num_of_heads)
-        self.l8 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, stride=2, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=8)
-        self.l9 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=9)
-        self.l10 = TCN_ViT_unit(24*num_of_heads, 24*num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=10)
+        self.l8 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, stride=2,
+                               num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=8)
+        self.l9 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                               pe=True, num_point=num_point, layer=9)
+        self.l10 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
+                                pe=True, num_point=num_point, layer=10)
         # standard ce loss
-        self.fc = nn.Linear(24*num_of_heads, num_class)
-        
+        self.fc = nn.Linear(24 * num_of_heads, num_class)
+
         # ## larger model
         # self.l1 = TCN_ViT_unit(3, 36 * num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True,
         #                        num_point=num_point, layer=1)
@@ -538,16 +665,47 @@ class Model(nn.Module):
         else:
             self.drop_out = lambda x: x
 
+    # x = data, y - labels
+
     def forward(self, x, y):
         groups = []
-        for num in range(max(self.joint_label)+1):
-            groups.append([ind for ind, element in enumerate(self.joint_label) if element==num])
+        for num in range(max(self.joint_label) + 1):
+            groups.append([ind for ind, element in enumerate(self.joint_label) if element == num])
+
+        """
+            N: Number of video sequences (the first dimension).
+            C: Number of channels (which corresponds to the 3D coordinates: x, y, z). In your case, this is 3.
+            V: Number of skeleton points (which corresponds to the 25 skeleton points per person).
+            T: Number of frames (max 300).
+            M: Number of persons (which is 2 in your case).
+        """
 
         N, C, T, V, M = x.size()
+        """
+        N: Number of video sequences.
+        M * V * C: Combined dimension for persons, skeleton points, and channels.
+        T: Number of frames.
+        """
         x = x.permute(0, 4, 3, 1, 2).contiguous().view(N, M * V * C, T)
+        # batch normalization
         x = self.data_bn(x)
 
+        # return to the original structure after batch normalization
+        # contiguos is meant to ensure that tensor is stored in contigious block of information
         ## n, c, t, v
+        """
+        The view(N * M, V, C, T) reshapes x to (N * M, V, C, T), 
+        effectively flattening the first two dimensions (number of sequences and number of persons) into a single dimension. 
+        This is useful for processing each person in each sequence independently.
+        Finally, the permute(0, 2, 3, 1) rearranges the dimensions again:
+        
+        after permute(0,2,3,1) is arrangement of values - 0th value, then 2nd value etc
+        so, the last arrangement is (N*M, C, T, V)
+        N * M - number of video sequences with person number
+        C - number of channels (3d position of points)
+        T - number of frames
+        V - number of skeleton points (25)
+        """
         x = x.view(N, M, V, C, T).contiguous().view(N * M, V, C, T).permute(0, 2, 3, 1)
 
         x = self.l1(x, self.joint_label, groups)
@@ -562,7 +720,7 @@ class Model(nn.Module):
         x = self.l10(x, self.joint_label, groups)
 
         # N*M, C, T, V
-        _ , C, T, V = x.size()
+        _, C, T, V = x.size()
         # spatial temporal average pooling
         x = x.view(N, M, C, -1)
         x = x.mean(3).mean(1)

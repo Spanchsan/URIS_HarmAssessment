@@ -102,14 +102,14 @@ class Processor():
                 batch_size=self.arg.batch_size,
                 shuffle=True,
                 pin_memory=True,
-                num_workers=0,
+                num_workers=self.arg.num_worker,
                 drop_last=True,
                 worker_init_fn=init_seed)
         self.data_loader['test'] = torch.utils.data.DataLoader(
             dataset=Feeder(**self.arg.test_feeder_args),
             batch_size=self.arg.test_batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=self.arg.num_worker,
             drop_last=False,
             worker_init_fn=init_seed)
 

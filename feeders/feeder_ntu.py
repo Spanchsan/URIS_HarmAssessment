@@ -1,7 +1,7 @@
 import numpy as np
 
 from torch.utils.data import Dataset
-import Hyperformer.feeders.tools as tools
+import feeders.tools as tools
 
 
 class Feeder(Dataset):

@@ -1,10 +1,10 @@
 work_dir: ./work_dir/ntu60/xsub/hyperformer_bone_vel
 phase: train
-save-score: False
+save_score: False
 seed: 2
 log-interval: 100
 print_log: True
-show-topk: [1, 5]
+show_topk: [1, 5]
 
 # feeder
 feeder: feeders.feeder_ntu.Feeder
@@ -60,10 +60,10 @@ save_epoch: 10
 
 
 # training
-device: [0]
-batch_size: 32
-test_batch_size: 32
-num_epoch: 80
+device: [1]
+batch_size: 64
+test_batch_size: 64
+num_epoch: 20
 num_worker: 0
 nesterov: True
 momentum: 0.9

@@ -1,8 +1,23 @@
-﻿import math
+import math
 import torch
 import torch.nn as nn
+from torch_geometric.nn import GINEConv
+from typing import Any, Dict, Optional
+
 import torch.nn.functional as F
-import numpy as np
+from torch import Tensor
+
+from torch_geometric.nn.conv import MessagePassing
+from torch_geometric.nn.inits import reset
+from torch_geometric.nn.resolver import (
+    activation_resolver,
+    normalization_resolver,
+)
+from torch_geometric.typing import Adj
+from torch_geometric.utils import to_dense_batch
+
+from mamba_ssm import Mamba
+from torch_geometric.utils import degree, sort_edge_index
 
 
 ### torch version too old for timm
@@ -96,6 +111,28 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
     """
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
+
+def permute_within_batch(x, batch):
+    # Enumerate over unique batch indices
+    unique_batches = torch.unique(batch)
+
+    # Initialize list to store permuted indices
+    permuted_indices = []
+
+    for batch_index in unique_batches:
+        # Extract indices for the current batch
+        indices_in_batch = (batch == batch_index).nonzero().squeeze()
+
+        # Permute indices within the current batch
+        permuted_indices_in_batch = indices_in_batch[torch.randperm(len(indices_in_batch))]
+
+        # Append permuted indices to the list
+        permuted_indices.append(permuted_indices_in_batch)
+
+    # Concatenate permuted indices into a single tensor
+    permuted_indices = torch.cat(permuted_indices)
+
+    return permuted_indices
 
 def import_class(name):
     components = name.split('.')
@@ -244,11 +281,6 @@ class MultiScale_TemporalConv(nn.Module):
 
         out = torch.cat(branch_outs, dim=1)
         out += res
-        '''print("AFTER TEMPORAL: ------------------------------------------------")
-        print(x.shape)
-        print(x[0][0][0])
-        print(x[0][1][0])
-        print(x[0][2][0])'''
         return out
 
 
@@ -268,217 +300,174 @@ class unit_tcn(nn.Module):
         return x
 
 
-"""
-initial state - actual attention module
+class GPSConv(torch.nn.Module):
 
-in_channels - 3 for first layer, then 24*number of heads
-out_channels - 24*number of heads
-"""
-
-
-class MHSA(nn.Module):
-    def __init__(self, dim_in, dim, A, num_heads=6, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.,
-                 insert_cls_layer=0, pe=False, num_point=25,
-                 outer=True, layer=0,
-                 **kwargs):
+    def __init__(
+            self,
+            channels: int,
+            conv: Optional[MessagePassing],
+            dropout: float = 0.0,
+            attn_dropout: float = 0.0,
+            act: str = 'relu',
+            order_by_degree: bool = False,
+            shuffle_ind: int = 0,
+            d_state: int = 16,
+            d_conv: int = 4,
+            act_kwargs: Optional[Dict[str, Any]] = None,
+            norm: Optional[str] = 'batch_norm',
+            norm_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__()
-        self.num_heads = num_heads
-        self.dim = dim
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-        self.num_point = num_point
-        self.layer = layer
 
-        h1 = A.sum(0)
-        h1[h1 != 0] = 1
-        h = [None for _ in range(num_point)]
-        h[0] = np.eye(num_point)
-        h[1] = h1
-        self.hops = 0 * h[0]
-        for i in range(2, num_point):
-            h[i] = h[i - 1] @ h1.transpose(0, 1)
-            h[i][h[i] != 0] = 1
+        self.channels = channels
+        self.conv = conv
+        self.dropout = dropout
+        self.shuffle_ind = shuffle_ind
+        self.order_by_degree = order_by_degree
 
-        for i in range(num_point - 1, 0, -1):
-            if np.any(h[i] - h[i - 1]):
-                h[i] = h[i] - h[i - 1]
-                self.hops += i * h[i]
-            else:
-                continue
+        assert (self.order_by_degree == True and self.shuffle_ind == 0) or (
+                    self.order_by_degree == False), f'order_by_degree={self.order_by_degree} and shuffle_ind={self.shuffle_ind}'
 
-        self.hops = torch.tensor(self.hops).long()
-        # by adding adjacent graph connections as hypergraph
-        # construct rpe to have Hypergraph influence on whole input
-        self.rpe = nn.Parameter(torch.zeros((self.hops.max() + 1, dim)))
+        self.self_attn = Mamba(
+            d_model=channels,
+            d_state=d_state,
+            d_conv=d_conv,
+            expand=1
+        )
 
-        self.w1 = nn.Parameter(torch.zeros(num_heads, head_dim))
+        self.mlp = nn.Sequential(
+            nn.Linear(channels, channels * 2),
+            activation_resolver(act, **(act_kwargs or {})),
+            nn.Dropout(dropout),
+            nn.Linear(channels * 2, channels),
+            nn.Dropout(dropout),
+        )
 
-        A = A.sum(0)
-        A[:, :] = 0
+        norm_kwargs = norm_kwargs or {}
+        self.norm1 = normalization_resolver(norm, channels, **norm_kwargs)
+        self.norm2 = normalization_resolver(norm, channels, **norm_kwargs)
+        self.norm3 = normalization_resolver(norm, channels, **norm_kwargs)
 
-        self.outer = nn.Parameter(torch.stack([torch.eye(A.shape[-1]) for _ in range(num_heads)], dim=0),
-                                  requires_grad=True)
+        self.norm_with_batch = False
 
-        self.alpha = nn.Parameter(torch.zeros(1), requires_grad=True)
+    def reset_parameters(self):
+        r"""Resets all learnable parameters of the module."""
+        if self.conv is not None:
+            self.conv.reset_parameters()
+        self.attn._reset_parameters()
+        reset(self.mlp)
+        if self.norm1 is not None:
+            self.norm1.reset_parameters()
+        if self.norm2 is not None:
+            self.norm2.reset_parameters()
+        if self.norm3 is not None:
+            self.norm3.reset_parameters()
 
-        self.kv = nn.Conv2d(dim_in, dim * 2, 1, bias=qkv_bias)
-        self.q = nn.Conv2d(dim_in, dim, 1, bias=qkv_bias)
+    def forward(
+            self,
+            x: Tensor,
+            edge_index: Adj,
+            batch: Optional[torch.Tensor] = None,
+            **kwargs,
+    ) -> Tensor:
+        r"""Runs the forward pass of the module."""
+        hs = []
+        if self.conv is not None:  # Local MPNN.
+            h = self.conv(x, edge_index, **kwargs)
+            h = F.dropout(h, p=self.dropout, training=self.training)
+            h = h + x
+            if self.norm1 is not None:
+                if self.norm_with_batch:
+                    h = self.norm1(h, batch=batch)
+                else:
+                    h = self.norm1(h)
+            hs.append(h)
 
-        self.attn_drop = nn.Dropout(attn_drop)
+        if self.order_by_degree:
+            deg = degree(edge_index[0], x.shape[0]).to(torch.long)
+            order_tensor = torch.stack([batch, deg], 1).T
+            _, x = sort_edge_index(order_tensor, edge_attr=x)
 
-        self.proj = nn.Conv2d(dim, dim, 1, groups=6)
+        if self.shuffle_ind == 0:
+            h, mask = to_dense_batch(x, batch)
+            h = self.self_attn(h)[mask]
+        else:
+            mamba_arr = []
+            for _ in range(self.shuffle_ind):
+                h_ind_perm = permute_within_batch(x, batch)
+                h_i, mask = to_dense_batch(x[h_ind_perm], batch)
+                h_i = self.self_attn(h_i)[mask][h_ind_perm]
+                mamba_arr.append(h_i)
+            h = sum(mamba_arr) / self.shuffle_ind
+        ###
 
-        self.proj_drop = nn.Dropout(proj_drop)
-        self.apply(self._init_weights)
-        self.insert_cls_layer = insert_cls_layer
+        h = F.dropout(h, p=self.dropout, training=self.training)
+        h = h + x  # Residual connection.
+        if self.norm2 is not None:
+            h = self.norm2(h)
+        hs.append(h)
 
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
+        out = sum(hs)  # Combine local and global outputs.
 
-    def forward(self, x, e):
-        """
-        x
-        N * M - number of video sequences with person number
-        C - number of channels (3d position of points)
-        T - number of frames
-        V - number of skeleton points (25)
-        after permute
-        (N*M, C, T, V)
-        """
-        N, C, T, V = x.shape
-        # all of this assuming this is the first layer
-        """kv - convolution nn - 3 in channel as for 3d positions, output 24 * batch_head size after kv(x)
-        basically opening up the whole data in 2 * 24 * batch_head for each person and their joint to joint relation
-        after reshape
-        N - number of videos
-        2 - persons
-        num_heads - number of heads in layer
-        self.dim // self.num_heads = 24 - channels(number of neurons)
-        T - number of frames
-        V - skeleton points
-        after permute
-        (2, N, T, num_heads, V, 24{channels})
-        """
-        kv = self.kv(x).reshape(N, 2, self.num_heads, self.dim // self.num_heads, T, V).permute(1, 0, 4, 2, 5, 3)
-        # k - first person relation
-        # v - second person relation
-        k, v = kv[0], kv[1]
+        out = out + self.mlp(out)
+        if self.norm3 is not None:
+            out = self.norm3(out)
 
-        """
-        q - convolution nn - to use in k-hop RPE(idk what it is - k-hop relative positional embedding) 
-        q(x) - opening up whole data in 24 * batch_head
-        N - number of videos
-        T - number of frames
-        H=num_heads - number of heads
-        V - skeleton points
-        C=self.dim // self.num_heads - 24 - channels(number of neurons)
-        """
-        ## n t h v c
-        q = self.q(x).reshape(N, self.num_heads, self.dim // self.num_heads, T, V).permute(0, 3, 1, 4, 2)
+        return out
 
-        """
-        e - hyperedge representation to each position
-        """
-        e_k = e.reshape(N, self.num_heads, self.dim // self.num_heads, T, V).permute(0, 3, 1, 4, 2)
-        #
-        #
-        #
-        pos_emb = self.rpe[self.hops]
-        #
-        """
-        RPE - bone connectivity relation
-        """
-        k_r = pos_emb.view(V, V, self.num_heads, self.dim // self.num_heads)
-        #
-        """
-        b - K-Hop RPE = Q * R_T
-        """
-        b = torch.einsum("bthnc, nmhc->bthnm", q, k_r)
-        #
-        """
-        Joint to hyperedge
-        """
-        c = torch.einsum("bthnc, bthmc->bthnm", q, e_k)
-        """
-        Attentive bias coming fron hyperdge relation
-        """
-        d = torch.einsum("hc, bthmc->bthm", self.w1, e_k).unsqueeze(-2)
-
-        """
-        Joint-to-joint = Q * K_T
-        """
-        a = q @ k.transpose(-2, -1)
-        """
-        attention sumation of all values
-        """
-        attn = a + b + c + d
-
-        attn = attn * self.scale
-        # softmax
-        attn = attn.softmax(dim=-1)
-        # attn_drop
-        attn = self.attn_drop(attn)
-
-        # matmul with V
-        x = (self.alpha * attn + self.outer) @ v
-        # x = attn @ v
-
-        x = x.transpose(3, 4).reshape(N, T, -1, V).transpose(1, 2)
-        x = self.proj(x)
-
-        x = self.proj_drop(x)
-        return x
+    def __repr__(self) -> str:
+        return (f'{self.__class__.__name__}({self.channels}, '
+                f'conv={self.conv}, heads={self.heads})')
 
 
-# using conv2d implementation after dimension permutation
-class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.,
-                 num_heads=None):
+class GraphModel(nn.Module):
+    def __init__(self, dim_in, dim_out, A, pe_dim, shuffle_ind, d_state,
+                 d_conv, order_by_degree: False, num_heads, layer, num_point, attn_drop, pe, neighbor):
         super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Conv2d(in_features, hidden_features, 1)
-        self.act = act_layer()
-        self.fc2 = nn.Conv2d(hidden_features, out_features, 1)
-        self.drop = nn.Dropout(drop)
-        self.apply(self._init_weights)
 
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
+        self.node_emb = nn.Embedding(dim_in, dim_out - pe_dim)
+        self.pe_lin = nn.Linear(dim_in, pe_dim)
+        self.pe_norm = nn.BatchNorm1d(dim_in)
+        self.edge_emb = nn.Embedding(4, dim_in)
+        self.shuffle_ind = shuffle_ind
+        self.order_by_degree = order_by_degree
+
+        nnF = torch.Sequential(
+            nn.Linear(dim_in, dim_in),
+            nn.ReLU(),
+            nn.Linear(dim_in, dim_in),
+        )
+        self.conv = GPSConv(dim_in, GINEConv(nnF), attn_dropout=attn_drop,
+                       shuffle_ind=self.shuffle_ind,
+                       order_by_degree=self.order_by_degree,
+                       d_state=d_state, d_conv=d_conv)
+
+        def convert_neighbor_to_edge_index(neighbor):
+            indices = torch.zeros((2, 50))
+            print(indices)
+            i = 0
+            for pair in neighbor:
+                indices[0][i] = pair[0]
+                indices[1][i] = pair[1]
+                i += 1
+            return indices
+        self.edge_index = convert_neighbor_to_edge_index(neighbor)
+
+
 
     def forward(self, x):
-        # x = self.fc1(x.transpose(1,2)).transpose(1,2)
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop(x)
-        # x = self.fc2(x.transpose(1,2)).transpose(1,2)
-        x = self.fc2(x)
-        x = self.drop(x)
+        if self.layer == 0:
+            x_pe = self.pe_norm(x)
+            x = torch.cat((self.node_emb(x.squeeze(-1)), self.pe_lin(x_pe)), 1)
+            x = self.conv(x, self.edge_index)
+        else:
+            x = self.conv(x, self.edge_index)
         return x
 
-
-"""
-normalize hypersa values, drop unused attention, acquire hyperedge relation
-
-in_channels - 3 for first layer, then 24*number of heads
-out_channels - 24*number of heads
-"""
 
 
 class unit_vit(nn.Module):
-    def __init__(self, dim_in, dim, A, num_of_heads, add_skip_connection=True, qkv_bias=False, qk_scale=None, drop=0.,
+    def __init__(self, dim_in, dim, A, num_of_heads, neighbor, add_skip_connection=True, qkv_bias=False, qk_scale=None, drop=0.,
                  attn_drop=0.,
                  drop_path=0, act_layer=nn.GELU, norm_layer=nn.LayerNorm, layer=0,
                  insert_cls_layer=0, pe=False, num_point=25, **kwargs):
@@ -489,9 +478,8 @@ class unit_vit(nn.Module):
         self.add_skip_connection = add_skip_connection
         self.num_point = num_point
         # attention part - HyperSA
-        self.attn = MHSA(dim_in, dim, A, num_heads=num_of_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                         attn_drop=attn_drop,
-                         proj_drop=drop, insert_cls_layer=insert_cls_layer, pe=pe, num_point=num_point, layer=layer,
+        self.attn = GraphModel(dim_in=dim_in, dim_out=dim, A=A, num_heads=num_of_heads,  attn_drop=attn_drop,
+                         pe=pe, num_point=num_point, layer=layer, neighbor=neighbor
                          **kwargs)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         if self.dim_in != self.dim:
@@ -499,51 +487,20 @@ class unit_vit(nn.Module):
         self.pe_proj = nn.Conv2d(dim_in, dim, 1, bias=False)
         self.pe = pe
 
-    def forward(self, x, joint_label, groups):
-        ## more efficient implementation
-        # get all joint labels
-        label = F.one_hot(torch.tensor(joint_label)).float().to(x.device)
-        # mat multiply out with existing labels
-        # joint label importance to the size of x
-        z = x @ (label / label.sum(dim=0, keepdim=True))
+    def forward(self, x):
+        """
+                    N * M - number of video sequences with person number
+                    C - number of channels (3d position of points)
+                    T - number of frames
+                    V - number of skeleton points (25)
+                    after permute(0,2,3,1)
+                    (N*M, T, V, C)
+                    after permute(0,3,1,2)
+                    (N*M, C, T, V)
 
-        # w/o proj
-        # z = z.permute(3, 0, 1, 2)
-        # w/ proj
-        # project them to appropriate size - 24 * heads
-        z = self.pe_proj(z).permute(3, 0, 1, 2)
-
-        # E - Subset representation of the projection of the invidiual joints features
-        # e_avg - hyper edge representation to each joint
-        e = z[joint_label].permute(1, 2, 3, 0)
-
-        if self.add_skip_connection:
-            if self.dim_in != self.dim:
-                x = self.skip_proj(x) + self.drop_path(
-                    self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
-            else:
-                x = x + self.drop_path(self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
-        else:
-            """
-            N * M - number of video sequences with person number
-            C - number of channels (3d position of points)
-            T - number of frames
-            V - number of skeleton points (25)
-            after permute(0,2,3,1)
-            (N*M, T, V, C)
-            after permute(0,3,1,2)
-            (N*M, C, T, V)
-            
-            normalize hypersa values, drop unused attention, acquire hyperedge relation
-            """
-            x = self.drop_path(self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2), e))
-
-        # x = x + self.drop_path(self.mlp(self.norm2(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)))
-        '''print("AFTER ATTENTION and DROP: ------------------------------------------------")
-        print(x.shape)
-        print(x[0][0][0])
-        print(x[0][1][0])
-        print(x[0][2][0])'''
+                    normalize hypersa values, drop unused attention, acquire hyperedge relation
+                    """
+        x = self.drop_path(self.attn(self.norm1(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)))
         return x
 
 
@@ -556,12 +513,12 @@ out_channels - 24*number of heads
 
 
 class TCN_ViT_unit(nn.Module):
-    def __init__(self, in_channels, out_channels, A, stride=1, num_of_heads=6, residual=True, kernel_size=5,
+    def __init__(self, in_channels, out_channels, A, neighbor, stride=1, num_of_heads=6, residual=True, kernel_size=5,
                  dilations=[1, 2], pe=False, num_point=25, layer=0):
         super(TCN_ViT_unit, self).__init__()
         # attention and spatial part
         self.vit1 = unit_vit(in_channels, out_channels, A, add_skip_connection=residual, num_of_heads=num_of_heads,
-                             pe=pe, num_point=num_point, layer=layer)
+                             pe=pe, num_point=num_point, layer=layer, neighbor=neighbor)
         # self.tcn1 = unit_tcn(out_channels, out_channels, stride=stride)
         # temporal part
         self.tcn1 = MultiScale_TemporalConv(out_channels, out_channels, kernel_size=kernel_size, stride=stride,
@@ -584,11 +541,6 @@ class TCN_ViT_unit(nn.Module):
 
     def forward(self, x, joint_label, groups):
         y = self.act(self.tcn1(self.vit1(x, joint_label, groups)) + self.residual(x))
-        '''print("OUTPUT: ------------------------------------------------")
-        print(y.shape)
-        print(y[0][0][0])
-        print(y[0][1][0])
-        print(y[0][2][0])'''
         return y
 
 
@@ -601,10 +553,10 @@ class TCN_ViT_unit(nn.Module):
 """
 
 
-class Model(nn.Module):
+class ModelGraph(nn.Module):
     def __init__(self, num_class=60, num_point=20, num_person=2, graph=None, graph_args=dict(), in_channels=3,
                  drop_out=0, num_of_heads=9, joint_label=[], **kwargs):
-        super(Model, self).__init__()
+        super(ModelGraph, self).__init__()
 
         if graph is None:
             raise ValueError()
@@ -613,6 +565,7 @@ class Model(nn.Module):
             self.graph = Graph(**graph_args)
 
         A = self.graph.A  # 3,25,25
+        neighbor = self.graph.neighbor
 
         self.num_of_heads = num_of_heads
         self.num_class = num_class
@@ -622,7 +575,7 @@ class Model(nn.Module):
         self.joint_label = joint_label
 
         self.l1 = TCN_ViT_unit(3, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads, pe=True,
-                               num_point=num_point, layer=1)
+                               num_point=num_point, layer=1, neighbor=neighbor)
         # * num_heads, effect of concatenation following the official implementation
         self.l2 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
                                pe=True, num_point=num_point, layer=2)
@@ -712,7 +665,7 @@ class Model(nn.Module):
         effectively flattening the first two dimensions (number of sequences and number of persons) into a single dimension. 
         This is useful for processing each person in each sequence independently.
         Finally, the permute(0, 2, 3, 1) rearranges the dimensions again:
-        
+
         after permute(0,2,3,1) is arrangement of values - 0th value, then 2nd value etc
         so, the last arrangement is (N*M, C, T, V)
         N * M - number of video sequences with person number
@@ -721,11 +674,6 @@ class Model(nn.Module):
         V - number of skeleton points (25)
         """
         x = x.view(N, M, V, C, T).contiguous().view(N * M, V, C, T).permute(0, 2, 3, 1)
-        '''print("INPUT: ------------------------------------------------")
-        print(x.shape)
-        print(x[0][0][0])
-        print(x[0][1][0])
-        print(x[0][2][0])'''
 
         x = self.l1(x, self.joint_label, groups)
         x = self.l2(x, self.joint_label, groups)

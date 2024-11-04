@@ -305,7 +305,6 @@ class Processor():
             self.lr = self.optimizer.param_groups[0]['lr']
             self.train_writer.add_scalar('lr', self.lr, self.global_step)
             timer['statistics'] += self.split_time()
-
         # statistics of time consumption and loss
         proportion = {
             k: '{:02d}%'.format(int(round(v * 100 / sum(timer.values()))))

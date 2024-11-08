@@ -540,8 +540,8 @@ class TCN_ViT_unit(nn.Module):
         else:
             self.residual = unit_tcn(in_channels, out_channels, kernel_size=1, stride=stride)
 
-    def forward(self, x, joint_label, groups):
-        y = self.act(self.tcn1(self.vit1(x, joint_label, groups)) + self.residual(x))
+    def forward(self, x):
+        y = self.act(self.tcn1(self.vit1(x)) + self.residual(x))
         return y
 
 

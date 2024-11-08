@@ -436,9 +436,9 @@ class GraphModel(nn.Module):
         self.neighbor = neighbor
 
         nnF = nn.Sequential(
-            nn.Linear(dim_in, dim_in),
+            nn.Linear(dim_out, dim_out),
             nn.ReLU(),
-            nn.Linear(dim_in, dim_in),
+            nn.Linear(dim_out, dim_out),
         )
         self.conv = GPSConv(dim_in, GINEConv(nnF), attn_dropout=attn_drop,
                        shuffle_ind=self.shuffle_ind,

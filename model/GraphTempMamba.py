@@ -459,6 +459,7 @@ class GraphModel(nn.Module):
         if self.layer == 0:
             x = self.node_emb(x.squeeze(-1))
             x = self.conv(x, edge_index, edge_attr=edge_attr)
+            print(x.size(), edge_attr.size())
         else:
             x = self.conv(x, edge_index, edge_attr=edge_attr)
         return x

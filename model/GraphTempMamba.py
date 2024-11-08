@@ -425,6 +425,8 @@ class GraphModel(nn.Module):
                  d_conv, order_by_degree,  layer, num_point, attn_drop, pe, neighbor, shuffle_ind, **kwargs):
         super().__init__()
 
+        if self.layer == 0:
+            self.pe_dim = 0
         self.node_emb = nn.Embedding(dim_in, dim_out - pe_dim)
         self.pe_lin = nn.Linear(dim_in-pe_dim, pe_dim)
         self.pe_norm = nn.BatchNorm1d(dim_in-pe_dim)

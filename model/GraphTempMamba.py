@@ -432,7 +432,7 @@ class GraphModel(nn.Module):
         self.order_by_degree = order_by_degree
         self.layer = layer
 
-        nnF = torch.Sequential(
+        nnF = nn.Sequential(
             nn.Linear(dim_in, dim_in),
             nn.ReLU(),
             nn.Linear(dim_in, dim_in),

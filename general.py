@@ -82,7 +82,6 @@ class Processor():
         self.best_acc = 0
         self.best_acc_epoch = 0
 
-
         self.model = self.model.cuda(self.output_device)
 
         if type(self.arg.device) is list:
@@ -121,7 +120,6 @@ class Processor():
         print(Model)
         self.model = Model(**self.arg.model_args)
         print(self.model)
-        self.model = self.model.to('cuda')
         self.loss = nn.CrossEntropyLoss().cuda(output_device)
 
         if self.arg.weights:
@@ -275,7 +273,7 @@ class Processor():
 
 
             with torch.amp.autocast('cuda', enabled=use_amp):
-                output, z = self.model(data, F.one_hot(label, num_classes=60))
+                output, z = self.model(data.cuda(), F.one_hot(label, num_classes=60))
                 # output, z = self.model(data, F.one_hot(label, num_classes=self.model.num_class))
 
                 loss = self.loss(output, label)

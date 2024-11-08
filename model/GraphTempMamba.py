@@ -432,6 +432,7 @@ class GraphModel(nn.Module):
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind
         self.layer = layer
+        self.neighbor = neighbor
 
         nnF = nn.Sequential(
             nn.Linear(dim_in, dim_in),
@@ -443,8 +444,11 @@ class GraphModel(nn.Module):
                        order_by_degree=self.order_by_degree,
                        d_state=d_state, d_conv=d_conv)
 
+
+
+    def forward(self, x):
         def convert_neighbor_to_edge_index(neighbor):
-            indices = torch.zeros((2, 50), dtype=int).cuda()
+            indices = torch.zeros((2, 50), dtype=int, device=x.device)
             # print(indices)
             i = 0
             for pair in neighbor:
@@ -452,11 +456,7 @@ class GraphModel(nn.Module):
                 indices[1][i] = pair[1]
                 i += 1
             return indices
-        self.edge_index = convert_neighbor_to_edge_index(neighbor).cuda()
-
-
-
-    def forward(self, x):
+        edge_index = convert_neighbor_to_edge_index(self.neighbor)
         if self.layer == 0:
             x_pe = self.pe_norm(x)
             x = torch.cat((self.node_emb(x.squeeze(-1)), self.pe_lin(x_pe)), 1)

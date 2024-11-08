@@ -430,6 +430,7 @@ class GraphModel(nn.Module):
         self.node_emb = nn.Embedding(dim_in, dim_out - pe_dim)
         self.pe_lin = nn.Linear(dim_in - pe_dim, pe_dim)
         self.pe_norm = nn.BatchNorm1d(dim_in - pe_dim)
+        self.edge_emb = nn.Embedding(1, dim_out)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind
         self.neighbor = neighbor
@@ -458,6 +459,7 @@ class GraphModel(nn.Module):
             return indices
         edge_index = convert_neighbor_to_edge_index(self.neighbor)
         edge_attr = torch.ones(edge_index.size(1), dtype=torch.float, device=x.device)
+        edge_attr = self.edge_emb(edge_attr)
         if self.layer == 0:
             x_pe = self.pe_norm(x)
             x = torch.cat((self.node_emb(x.squeeze(-1)), self.pe_lin(x_pe)), 1)

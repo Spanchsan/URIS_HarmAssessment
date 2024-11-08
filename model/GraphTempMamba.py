@@ -373,7 +373,7 @@ class GPSConv(torch.nn.Module):
         r"""Runs the forward pass of the module."""
         hs = []
         if self.conv is not None:  # Local MPNN.
-            h = self.conv(x, edge_index)
+            h = self.conv(x, edge_index, **kwargs)
             h = F.dropout(h, p=self.dropout, training=self.training)
             h = h + x
             if self.norm1 is not None:
@@ -386,7 +386,7 @@ class GPSConv(torch.nn.Module):
         if self.order_by_degree:
             deg = degree(edge_index[0], x.shape[0]).to(torch.long)
             order_tensor = torch.stack([batch, deg], 1).T
-            _, x = sort_edge_index(order_tensor)
+            _, x = sort_edge_index(order_tensor, edge_attr=x)
 
         if self.shuffle_ind == 0:
             h, mask = to_dense_batch(x, batch)
@@ -457,12 +457,13 @@ class GraphModel(nn.Module):
                 i += 1
             return indices
         edge_index = convert_neighbor_to_edge_index(self.neighbor)
+        edge_attr = torch.ones(edge_index.size(1), dtype=torch.float, device=x.device)
         if self.layer == 0:
             x_pe = self.pe_norm(x)
             x = torch.cat((self.node_emb(x.squeeze(-1)), self.pe_lin(x_pe)), 1)
-            x = self.conv(x, edge_index)
+            x = self.conv(x, edge_index, edge_attr)
         else:
-            x = self.conv(x, edge_index)
+            x = self.conv(x, edge_index, edge_attr)
         return x
 
 

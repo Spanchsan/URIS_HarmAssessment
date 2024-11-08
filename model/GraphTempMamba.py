@@ -579,24 +579,24 @@ class ModelGraph(nn.Module):
                                num_point=num_point, layer=1, neighbor=neighbor)
         # * num_heads, effect of concatenation following the official implementation
         self.l2 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                               pe=True, num_point=num_point, layer=2)
+                               pe=True, num_point=num_point, layer=2, neighbor=neighbor)
         self.l3 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                               pe=True, num_point=num_point, layer=3)
+                               pe=True, num_point=num_point, layer=3, neighbor=neighbor)
         self.l4 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                               pe=True, num_point=num_point, layer=4)
+                               pe=True, num_point=num_point, layer=4, neighbor=neighbor)
         self.l5 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, stride=2,
-                               num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=5)
+                               num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=5, neighbor=neighbor)
         self.l6 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                               pe=True, num_point=num_point, layer=6)
+                               pe=True, num_point=num_point, layer=6,neighbor=neighbor )
         self.l7 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                               pe=True, num_point=num_point, layer=7)
+                               pe=True, num_point=num_point, layer=7, neighbor=neighbor)
         # self.l8 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, num_of_heads=num_of_heads)
         self.l8 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, stride=2,
-                               num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=8)
+                               num_of_heads=num_of_heads, pe=True, num_point=num_point, layer=8, neighbor=neighbor)
         self.l9 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                               pe=True, num_point=num_point, layer=9)
+                               pe=True, num_point=num_point, layer=9, neighbor=neighbor)
         self.l10 = TCN_ViT_unit(24 * num_of_heads, 24 * num_of_heads, A, residual=True, num_of_heads=num_of_heads,
-                                pe=True, num_point=num_point, layer=10)
+                                pe=True, num_point=num_point, layer=10, neighbor=neighbor)
         # standard ce loss
         self.fc = nn.Linear(24 * num_of_heads, num_class)
 

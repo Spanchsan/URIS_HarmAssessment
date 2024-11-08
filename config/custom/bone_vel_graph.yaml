@@ -60,7 +60,7 @@ save_epoch: 1
 
 
 # training
-device: [0]
+device: [1]
 batch_size: 1
 test_batch_size: 1
 num_epoch: 1

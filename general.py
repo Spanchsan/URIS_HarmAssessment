@@ -72,6 +72,7 @@ class Processor():
         self.global_step = 0
         # pdb.set_trace()
         self.load_model()
+        self.model = self.model.cuda(self.output_device)
 
         if self.arg.phase == 'model_size':
             pass
@@ -81,8 +82,6 @@ class Processor():
         self.lr = self.arg.base_lr
         self.best_acc = 0
         self.best_acc_epoch = 0
-
-        self.model = self.model.cuda(self.output_device)
 
         if type(self.arg.device) is list:
             if len(self.arg.device) > 1:
@@ -273,7 +272,7 @@ class Processor():
 
 
             with torch.amp.autocast('cuda', enabled=use_amp):
-                output, z = self.model(data.cuda(), F.one_hot(label, num_classes=60))
+                output, z = self.model(data, F.one_hot(label, num_classes=60))
                 # output, z = self.model(data, F.one_hot(label, num_classes=self.model.num_class))
 
                 loss = self.loss(output, label)

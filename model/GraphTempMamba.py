@@ -426,9 +426,8 @@ class GraphModel(nn.Module):
         super().__init__()
 
         self.node_emb = nn.Embedding(dim_in, dim_out - pe_dim)
-        self.pe_lin = nn.Linear(dim_in, pe_dim)
-        self.pe_norm = nn.BatchNorm1d(dim_in)
-        self.edge_emb = nn.Embedding(4, dim_in)
+        self.pe_lin = nn.Linear(dim_in-pe_dim, pe_dim)
+        self.pe_norm = nn.BatchNorm1d(dim_in-pe_dim)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind
         self.layer = layer

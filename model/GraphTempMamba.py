@@ -452,7 +452,7 @@ class GraphModel(nn.Module):
                 indices[1][i] = pair[1]
                 i += 1
             return indices
-        self.edge_index = convert_neighbor_to_edge_index(neighbor)
+        self.edge_index = convert_neighbor_to_edge_index(neighbor).cuda()
 
 
 

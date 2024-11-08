@@ -444,7 +444,7 @@ class GraphModel(nn.Module):
                        d_state=d_state, d_conv=d_conv)
 
         def convert_neighbor_to_edge_index(neighbor):
-            indices = torch.zeros((2, 50))
+            indices = torch.zeros((2, 50), dtype=int)
             # print(indices)
             i = 0
             for pair in neighbor:

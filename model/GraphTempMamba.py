@@ -460,9 +460,9 @@ class GraphModel(nn.Module):
         if self.layer == 0:
             x_pe = self.pe_norm(x)
             x = torch.cat((self.node_emb(x.squeeze(-1)), self.pe_lin(x_pe)), 1)
-            x = self.conv(x, self.edge_index)
+            x = self.conv(x, edge_index)
         else:
-            x = self.conv(x, self.edge_index)
+            x = self.conv(x, edge_index)
         return x
 
 

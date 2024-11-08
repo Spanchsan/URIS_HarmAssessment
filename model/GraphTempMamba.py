@@ -425,7 +425,7 @@ class GraphModel(nn.Module):
                  d_conv, order_by_degree,  layer, num_point, attn_drop, pe, neighbor, shuffle_ind, **kwargs):
         super().__init__()
         self.layer = layer
-        self.node_emb = nn.Embedding(dim_in, dim_out)
+        self.node_emb = nn.Embedding(dim_in, dim_out, dtype=float)
         self.edge_emb = nn.Embedding(num_point*2, dim_out)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind

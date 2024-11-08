@@ -456,10 +456,9 @@ class GraphModel(nn.Module):
         edge_index = convert_neighbor_to_edge_index(self.neighbor)
         edge_attr = torch.ones(edge_index.size(1), dtype=torch.int, device=x.device)
         edge_attr = self.edge_emb(edge_attr)
-        if self.layer == 0:
+        if self.layer == 1:
             x = self.node_emb(x.squeeze(-1))
             x = self.conv(x, edge_index, edge_attr=edge_attr)
-            print(x.size(), edge_attr.size())
         else:
             x = self.conv(x, edge_index, edge_attr=edge_attr)
         return x

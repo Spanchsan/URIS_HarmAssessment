@@ -386,7 +386,7 @@ class GPSConv(torch.nn.Module):
         if self.order_by_degree:
             deg = degree(edge_index[0], x.shape[0]).to(torch.long)
             order_tensor = torch.stack([batch, deg], 1).T
-            _, x = sort_edge_index(order_tensor, edge_attr=x)
+            _, x = sort_edge_index(order_tensor)
 
         if self.shuffle_ind == 0:
             h, mask = to_dense_batch(x, batch)

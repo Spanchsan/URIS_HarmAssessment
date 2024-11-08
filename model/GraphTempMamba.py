@@ -458,7 +458,7 @@ class GraphModel(nn.Module):
                 i += 1
             return indices
         edge_index = convert_neighbor_to_edge_index(self.neighbor)
-        edge_attr = torch.ones(edge_index.size(1), dtype=torch.float, device=x.device)
+        edge_attr = torch.ones(edge_index.size(1), dtype=torch.int, device=x.device)
         edge_attr = self.edge_emb(edge_attr)
         if self.layer == 0:
             x_pe = self.pe_norm(x)

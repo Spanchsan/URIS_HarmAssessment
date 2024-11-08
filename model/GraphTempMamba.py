@@ -425,7 +425,7 @@ class GraphModel(nn.Module):
                  d_conv, order_by_degree,  layer, num_point, attn_drop, pe, neighbor, shuffle_ind, **kwargs):
         super().__init__()
         self.layer = layer
-        self.dilute = nn.Conv2d(dim_in, dim_out, kernel_size=(1,1))
+        self.node_emb = nn.Embedding(dim_in, dim_out)
         self.edge_emb = nn.Embedding(1, dim_out)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind
@@ -457,7 +457,7 @@ class GraphModel(nn.Module):
         edge_attr = torch.ones(edge_index.size(1), dtype=torch.int, device=x.device)
         edge_attr = self.edge_emb(edge_attr)
         if self.layer == 0:
-            x = self.dilute(x)
+            x = self.node_emb(x.squeeze(-1))
             x = self.conv(x, edge_index, edge_attr=edge_attr)
         else:
             x = self.conv(x, edge_index, edge_attr=edge_attr)
@@ -478,7 +478,7 @@ class unit_vit(nn.Module):
         self.num_point = num_point
         # attention part - HyperSA
         self.attn = GraphModel(dim_in=dim_in, dim_out=dim, A=A, attn_drop=attn_drop,
-                         pe=pe, num_point=num_point, layer=layer, neighbor=neighbor, pe_dim=8,
+                         pe=pe, num_point=num_point, layer=layer, neighbor=neighbor, pe_dim=1,
                                d_state=16, d_conv=4, order_by_degree=False, shuffle_ind=0, **kwargs)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         if self.dim_in != self.dim:

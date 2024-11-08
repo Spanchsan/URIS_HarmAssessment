@@ -421,16 +421,16 @@ class GPSConv(torch.nn.Module):
 
 
 class GraphModel(nn.Module):
-    def __init__(self, dim_in, dim_out, A, pe_dim, shuffle_ind, d_state,
-                 d_conv, order_by_degree: False, num_heads, layer, num_point, attn_drop, pe, neighbor):
+    def __init__(self, dim_in, dim_out, A, pe_dim, d_state,
+                 d_conv, order_by_degree,  layer, num_point, attn_drop, pe, neighbor):
         super().__init__()
 
         self.node_emb = nn.Embedding(dim_in, dim_out - pe_dim)
         self.pe_lin = nn.Linear(dim_in, pe_dim)
         self.pe_norm = nn.BatchNorm1d(dim_in)
         self.edge_emb = nn.Embedding(4, dim_in)
-        self.shuffle_ind = shuffle_ind
         self.order_by_degree = order_by_degree
+        self.layer = layer
 
         nnF = torch.Sequential(
             nn.Linear(dim_in, dim_in),
@@ -479,8 +479,8 @@ class unit_vit(nn.Module):
         self.num_point = num_point
         # attention part - HyperSA
         self.attn = GraphModel(dim_in=dim_in, dim_out=dim, A=A, num_heads=num_of_heads,  attn_drop=attn_drop,
-                         pe=pe, num_point=num_point, layer=layer, neighbor=neighbor
-                         **kwargs)
+                         pe=pe, num_point=num_point, layer=layer, neighbor=neighbor, pe_dim=8,
+                               d_state=16, d_conv=4, order_by_degree=False, **kwargs)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         if self.dim_in != self.dim:
             self.skip_proj = nn.Conv2d(dim_in, dim, (1, 1), padding=(0, 0), bias=False)

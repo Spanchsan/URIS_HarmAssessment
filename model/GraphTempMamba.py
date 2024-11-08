@@ -425,7 +425,7 @@ class GraphModel(nn.Module):
                  d_conv, order_by_degree,  layer, num_point, attn_drop, pe, neighbor, shuffle_ind, **kwargs):
         super().__init__()
         self.layer = layer
-        self.node_emb = nn.Embedding(dim_in, dim_out, dtype=float)
+        self.node_emb = nn.Embedding(dim_in, dim_out)
         self.edge_emb = nn.Embedding(num_point*2, dim_out)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind
@@ -457,7 +457,7 @@ class GraphModel(nn.Module):
         edge_attr = torch.ones(edge_index.size(1), dtype=torch.int, device=x.device)
         edge_attr = self.edge_emb(edge_attr)
         if self.layer == 1:
-            x = self.node_emb(x.squeeze(-1))
+            x = self.node_emb(x.squeeze(-1).long())
             x = self.conv(x, edge_index, edge_attr=edge_attr)
         else:
             x = self.conv(x, edge_index, edge_attr=edge_attr)

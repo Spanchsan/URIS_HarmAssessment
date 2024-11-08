@@ -426,7 +426,7 @@ class GraphModel(nn.Module):
         super().__init__()
         self.layer = layer
         self.node_emb = nn.Embedding(dim_in, dim_out)
-        self.edge_emb = nn.Embedding(1, dim_out)
+        self.edge_emb = nn.Embedding(num_point*2, dim_out)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind
         self.neighbor = neighbor

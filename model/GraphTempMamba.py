@@ -428,6 +428,7 @@ class GraphModel(nn.Module):
         if dim_in - pe_dim < 0:
             self.pe_dim = 0
             print(self.pe_dim)
+            print(self.dim_in)
         self.node_emb = nn.Embedding(dim_in, dim_out - pe_dim)
         self.pe_lin = nn.Linear(dim_in - pe_dim, pe_dim)
         self.pe_norm = nn.BatchNorm1d(dim_in - pe_dim)

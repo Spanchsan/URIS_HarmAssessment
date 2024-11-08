@@ -1,4 +1,4 @@
-work_dir: ./work_dir/ntu60/xsub/hyperformer_bone_vel
+work_dir: ./work_dir/ntu60/xsub/hyperformer_joint
 phase: train
 save_score: False
 seed: 2
@@ -55,15 +55,15 @@ step: [110, 120]
 warm_up_epoch: 5
 start_epoch: 0
 save_interval: 1
-eval_interval: 5
-save_epoch: 10
+eval_interval: 1
+save_epoch: 1
 
 
 # training
-device: [1]
-batch_size: 64
-test_batch_size: 64
-num_epoch: 20
+device: [1, 2]
+batch_size: 128
+test_batch_size: 128
+num_epoch: 2
 num_worker: 0
 nesterov: True
 momentum: 0.9

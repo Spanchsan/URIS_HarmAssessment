@@ -30,11 +30,11 @@ def init_seed(seed):
     random.seed(seed)
     # torch.backends.cudnn.enabled = True
     # training speed is too slow if set to True
-    torch.backends.cudnn.deterministic = False
+    torch.backends.cudnn.deterministic = True
 
     # on cuda 11 cudnn8, the default algorithm is very slow
     # unlike on cuda 10, the default works well
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
 
 def import_class(import_str):
     mod_str, _sep, class_str = import_str.rpartition('.')
@@ -463,7 +463,7 @@ if __name__ == '__main__':
         description='GRA Transformer')
     parser.add_argument(
         '--config',
-        default='./config/custom/bone_vel.yaml',
+        default='./config/custom/joint.yaml',
         help='path to the configuration file')
     # load arg form config file
     p = parser.parse_args()

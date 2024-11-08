@@ -425,7 +425,7 @@ class GraphModel(nn.Module):
                  d_conv, order_by_degree,  layer, num_point, attn_drop, pe, neighbor, shuffle_ind, **kwargs):
         super().__init__()
         self.layer = layer
-        self.dilute = nn.Conv2d(dim_in, dim_out)
+        self.dilute = nn.Conv2d(dim_in, dim_out, kernel_size=(1,1))
         self.edge_emb = nn.Embedding(1, dim_out)
         self.order_by_degree = order_by_degree
         self.shuffle_ind = shuffle_ind

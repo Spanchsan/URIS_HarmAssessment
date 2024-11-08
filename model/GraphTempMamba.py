@@ -636,9 +636,6 @@ class ModelGraph(nn.Module):
     # x = data, y - labels
 
     def forward(self, x, y):
-        groups = []
-        for num in range(max(self.joint_label) + 1):
-            groups.append([ind for ind, element in enumerate(self.joint_label) if element == num])
 
         """
             N: Number of video sequences (the first dimension).
@@ -676,16 +673,16 @@ class ModelGraph(nn.Module):
         """
         x = x.view(N, M, V, C, T).contiguous().view(N * M, V, C, T).permute(0, 2, 3, 1)
 
-        x = self.l1(x, self.joint_label, groups)
-        x = self.l2(x, self.joint_label, groups)
-        x = self.l3(x, self.joint_label, groups)
-        x = self.l4(x, self.joint_label, groups)
-        x = self.l5(x, self.joint_label, groups)
-        x = self.l6(x, self.joint_label, groups)
-        x = self.l7(x, self.joint_label, groups)
-        x = self.l8(x, self.joint_label, groups)
-        x = self.l9(x, self.joint_label, groups)
-        x = self.l10(x, self.joint_label, groups)
+        x = self.l1(x)
+        x = self.l2(x)
+        x = self.l3(x)
+        x = self.l4(x)
+        x = self.l5(x)
+        x = self.l6(x)
+        x = self.l7(x)
+        x = self.l8(x)
+        x = self.l9(x)
+        x = self.l10(x)
 
         # N*M, C, T, V
         _, C, T, V = x.size()

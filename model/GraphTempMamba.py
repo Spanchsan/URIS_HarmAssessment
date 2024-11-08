@@ -417,7 +417,7 @@ class GPSConv(torch.nn.Module):
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.channels}, '
-                f'conv={self.conv}, heads={self.heads})')
+                f'conv={self.conv})')
 
 
 class GraphModel(nn.Module):
@@ -445,7 +445,7 @@ class GraphModel(nn.Module):
 
         def convert_neighbor_to_edge_index(neighbor):
             indices = torch.zeros((2, 50))
-            print(indices)
+            # print(indices)
             i = 0
             for pair in neighbor:
                 indices[0][i] = pair[0]

@@ -461,7 +461,7 @@ if __name__ == '__main__':
         description='GRA Transformer')
     parser.add_argument(
         '--config',
-        default='./config/custom/bone_vel_graph.yaml',
+        default='./config/nturgbd-cross-subject/joint.yaml',
         help='path to the configuration file')
     # load arg form config file
     p = parser.parse_args()

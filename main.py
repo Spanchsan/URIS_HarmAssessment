@@ -24,7 +24,7 @@ from tqdm import tqdm
 from torchlight.util import DictAction
 
 "https://github.com/ajbrock/BigGAN-PyTorch/blob/master/utils.py"
-
+torch.cuda.empty_cache()
 
 def ema_update(source, target, decay=0.99, start_itr=20, itr=None):
     # If an iteration counter is provided and itr is less than the start itr,

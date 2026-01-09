@@ -7,7 +7,7 @@ import feeders.tools as tools
 class Feeder(Dataset):
     def __init__(self, data_path, label_path=None, p_interval=1, split='train', random_choose=False, random_shift=False,
                  random_move=False, random_rot=False, window_size=-1, normalization=False, debug=False, use_mmap=False,
-                 bone=False, vel=False):
+                 bone=False, vel=False, rot_theta=0.3):
         """
         :param data_path:
         :param label_path:
@@ -39,6 +39,7 @@ class Feeder(Dataset):
         self.random_rot = random_rot
         self.bone = bone
         self.vel = vel
+        self.rot_theta = rot_theta
         self.load_data()
         if normalization:
             self.get_mean_map()
@@ -118,7 +119,7 @@ class Feeder(Dataset):
         # reshape Tx(MVC) to CTVM
         data_numpy = tools.valid_crop_resize(data_numpy, valid_frame_num, self.p_interval, self.window_size)
         if self.random_rot:
-            data_numpy = tools.random_rot(data_numpy)
+            data_numpy = tools.random_rot(data_numpy, theta=self.rot_theta)
         if self.bone:
             from .bone_pairs import ntu_pairs
             bone_data_numpy = np.zeros_like(data_numpy)

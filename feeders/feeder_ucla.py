@@ -35,6 +35,7 @@ class Feeder(Dataset):
         self.normalization = normalization
         self.use_mmap = use_mmap
         self.repeat = repeat
+        self.sample_name = []
         self.load_data()
         if normalization:
             self.get_mean_map()

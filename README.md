@@ -27,12 +27,10 @@ Preliminary results on NTU RGB+D (as reported in the paper):
 
 | Dataset          | Protocol     | Top-1 Accuracy | Params (M) | FLOPs (G) |
 |------------------|--------------|----------------|------------|-----------|
-| NTU RGB+D 60     | Cross-Subject| XX.X%          | ~0.XX      | ~X.X      |
-| NTU RGB+D 60     | Cross-View   | XX.X%          | ~0.XX      | ~X.X      |
-| NTU RGB+D 120    | Cross-Subject| XX.X%          | ~0.XX      | ~X.X      |
-| NTU RGB+D 120    | Cross-Setup  | XX.X%          | ~0.XX      | ~X.X      |
-
-*(Numbers will be updated once final paper results are available)*
+| NTU RGB+D 60     | Cross-Subject| 93.27%         | ~1.2       | ~1.52     |
+| NTU RGB+D 60     | Cross-View   | 96.83%         | ~1.2       | ~1.52     |
+| NTU RGB+D 120    | Cross-Subject| 89.61%         | ~1.2       | ~1.52     |
+| NTU RGB+D 120    | Cross-Setup  | 91.03%         | ~1.2       | ~1.52     |
 
 ## Installation
 

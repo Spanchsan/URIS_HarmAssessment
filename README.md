@@ -34,5 +34,19 @@ To start the program, run:
 ```bash
 python harm_assessment.py
 ```
+
+## Examples
+<table>
+  <tr>
+    <td><img width="100%" src="https://github.com/user-attachments/assets/74dafe97-ead8-4aa7-8fdf-7c6cc7e78546" /></td>
+    <td><img width="100%"src="https://github.com/user-attachments/assets/732bca9c-5dbd-4800-b16b-4fadb018385e" /></td>
+  </tr>
+  <tr>
+    <td><img width="100%" src="https://github.com/user-attachments/assets/ee435ddd-bdd0-46b4-a570-67b901b91276" /></td>
+    <td><img width="100%" src="https://github.com/user-attachments/assets/0f2d7acb-ae20-4307-8689-4da9e267c37a" /></td>
+  </tr>
+</table>
+
+
 ## Training, Evaluation, and Testing (FLOPS & Parameters
 Instructions can be founded in main branch of this repo.
